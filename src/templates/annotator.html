@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emergency Blueprint Rescue Analyzer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #d32f2f;
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 1.2em;
+            margin-bottom: 30px;
+        }
+        .rescue-controls {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .control-section {
+            flex: 1;
+            min-width: 300px;
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #d32f2f;
+        }
+        .damage-tools {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #fff3e0;
+            border-radius: 8px;
+            border: 2px solid #ff9800;
+        }
+        .damage-type {
+            display: inline-block;
+            margin: 5px;
+            padding: 8px 16px;
+            background-color: #ff5722;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .damage-type:hover {
+            background-color: #d84315;
+            transform: scale(1.05);
+        }
+        .damage-type.active {
+            background-color: #b71c1c;
+            box-shadow: 0 0 10px rgba(183, 28, 28, 0.5);
+        }
+        .canvas-container {
+            position: relative;
+            margin: 20px 0;
+            border: 3px solid #d32f2f;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        #blueprintCanvas {
+            display: block;
+            cursor: crosshair;
+        }
+        .risk-legend {
+            display: flex;
+            gap: 20px;
+            margin: 15px 0;
+            justify-content: center;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 15px;
+            color: white;
+            font-weight: bold;
+        }
+        .legend-safe { background-color: #4caf50; }
+        .legend-moderate { background-color: #ff9800; }
+        .legend-high { background-color: #f44336; }
+        .btn {
+            background-color: #d32f2f;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #b71c1c;
+        }
+        .btn-safe {
+            background-color: #4caf50;
+        }
+        .btn-safe:hover {
+            background-color: #388e3c;
+        }
+        .results {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e8f5e8;
+            border-radius: 4px;
+            border-left: 4px solid #4caf50;
+        }
+        .path-controls {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid #2196f3;
+        }
+        .damage-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+        }
+        .damage-item {
+            padding: 5px;
+            margin: 2px 0;
+            background-color: #ffebee;
+            border-radius: 3px;
+            border-left: 3px solid #f44336;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .risk-zone {
+            animation: pulse 2s infinite;
+        }
+        .safe-path {
+            animation: pulse 1.5s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚨 Emergency Blueprint Rescue Analyzer</h1>
+        <p class="subtitle">Damage Assessment & Safe Entry Path Planning for Emergency Responders</p>
+        
+        <!-- Emergency Controls -->
+        <div class="rescue-controls">
+            <div class="control-section">
+                <h3>📤 Upload Blueprint</h3>
+                <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg" />
+                <button class="btn" onclick="uploadFile()">Analyze Blueprint</button>
+            </div>
+            
+            <div class="control-section">
+                <h3>⚠️ Current Status</h3>
+                <div id="statusDisplay">Ready for emergency analysis</div>
+                <div id="damageCount">Damage Points: 0</div>
+                <div id="riskLevel">Risk Level: Safe</div>
+            </div>
+        </div>
+
+        <!-- Damage Assessment Tools -->
+        <div class="damage-tools">
+            <h3>🔨 Damage Assessment Tools</h3>
+            <p>Click on blueprint to mark damage. Select damage type first:</p>
+            <button class="damage-type" data-type="collapsed_wall">🧱 Collapsed Wall</button>
+            <button class="damage-type" data-type="crack">⚡ Crack</button>
+            <button class="damage-type" data-type="leaning_beam">📏 Leaning Beam</button>
+            <button class="damage-type" data-type="blocked_passage">🚪 Blocked Passage</button>
+            
+            <div style="margin-top: 15px;">
+                <button class="btn" onclick="clearDamage()">Clear All Damage</button>
+                <button class="btn" onclick="generateRiskZones()">Generate Risk Zones</button>
+                <button class="btn" onclick="saveDamageAssessment()">Save Assessment</button>
+            </div>
+        </div>
+
+        <!-- Risk Zone Legend -->
+        <div class="risk-legend">
+            <div class="legend-item legend-safe">🟢 Safe Zone</div>
+            <div class="legend-item legend-moderate">🟡 Moderate Risk</div>
+            <div class="legend-item legend-high">🔴 High Risk / Danger</div>
+        </div>
+
+        <!-- Blueprint Canvas -->
+        <div class="canvas-container">
+            <canvas id="blueprintCanvas" width="800" height="600"></canvas>
+        </div>
+
+        <!-- Safe Path Planning -->
+        <div class="path-controls">
+            <h3>🛤️ Safe Entry Path Planning</h3>
+            <p>Click two points on blueprint to find safe path:</p>
+            <button class="btn btn-safe" onclick="setPathMode('start')">Set Entry Point</button>
+            <button class="btn btn-safe" onclick="setPathMode('end')">Set Exit Point</button>
+            <button class="btn btn-safe" onclick="findSafePath()">Calculate Safe Path</button>
+            <button class="btn" onclick="clearPath()">Clear Path</button>
+        </div>
+
+        <!-- Damage List -->
+        <div class="damage-list" id="damageList">
+            <strong>Recorded Damage:</strong>
+            <div id="damageItems">No damage recorded yet</div>
+        </div>
+
+        <!-- Analysis Results -->
+        <div id="results" class="results" style="display: none;">
+            <h3>📊 Analysis Results</h3>
+            <div id="resultsContent"></div>
+        </div>
+
+        <!-- Available Files -->
+        <div class="control-section">
+            <h3>📁 Available Blueprint Files</h3>
+            {% if files %}
+                {% for file in files %}
+                <div style="margin: 5px 0; padding: 10px; background-color: #f0f0f0; border-radius: 4px;">
+                    <strong>{{ file }}</strong>
+                    <button class="btn" onclick="loadBlueprint('{{ file }}')">Load for Rescue Analysis</button>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p>No converted files found. Upload blueprints above.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        let canvas, ctx;
+        let currentImage = null;
+        let damageMarks = [];
+        let selectedDamageType = 'crack';
+        let pathMode = null; // 'start', 'end', or null
+        let startPoint = null;
+        let endPoint = null;
+        let safePath = null;
+        let currentFilename = null;
+
+        // Initialize canvas
+        window.onload = function() {
+            canvas = document.getElementById('blueprintCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Verify canvas is working
+            console.log('Canvas initialized:', canvas.width, 'x', canvas.height);
+            
+            // Set initial canvas state
+            canvas.width = 800;
+            canvas.height = 600;
+            ctx.fillStyle = '#f8f8f8';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add instructions
+            ctx.fillStyle = '#666';
+            ctx.font = '18px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Upload a blueprint or load an existing file to begin', canvas.width/2, canvas.height/2);
+            
+            // Set up damage type selection
+            document.querySelectorAll('.damage-type').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.damage-type').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    selectedDamageType = this.dataset.type;
+                    pathMode = null; // Reset path mode
+                    updateStatus(`Selected damage type: ${selectedDamageType.replace('_', ' ')}`);
+                });
+            });
+            
+            // Set up canvas click handler
+            canvas.addEventListener('click', handleCanvasClick);
+            
+            // Set initial damage type
+            const firstDamageBtn = document.querySelector('.damage-type');
+            if (firstDamageBtn) {
+                firstDamageBtn.classList.add('active');
+                selectedDamageType = firstDamageBtn.dataset.type;
+            }
+            
+            updateStatus('Ready - Upload a blueprint or load an existing file');
+        };
+
+        function handleCanvasClick(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+
+            if (pathMode === 'start') {
+                startPoint = {x: x, y: y};
+                pathMode = null;
+                updateStatus('Entry point set. Now set exit point.');
+                redrawCanvas();
+            } else if (pathMode === 'end') {
+                endPoint = {x: x, y: y};
+                pathMode = null;
+                updateStatus('Exit point set. Click "Calculate Safe Path".');
+                redrawCanvas();
+            } else {
+                // Add damage mark
+                const damage = {
+                    x: x,
+                    y: y,
+                    type: selectedDamageType,
+                    timestamp: new Date().toISOString()
+                };
+                damageMarks.push(damage);
+                updateDamageList();
+                updateStatus(`${selectedDamageType.replace('_', ' ')} marked at (${Math.round(x)}, ${Math.round(y)})`);
+                redrawCanvas();
+            }
+        }
+
+        function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+            
+            // First load the image to canvas for immediate display
+            loadImageToCanvas(file);
+            
+            // Then analyze it
+            const formData = new FormData();
+            formData.append('blueprint', file);
+            
+            updateStatus('Analyzing blueprint structure and detecting damage...');
+            
+            fetch('/analyze', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayResults(data);
+                if (data.status === 'success') {
+                    currentFilename = file.name;
+                    updateStatus('Blueprint analyzed successfully. Ready for damage assessment.');
+                    
+                    // Auto-add detected damage if any
+                    if (data.auto_detected_damage && data.auto_detected_damage.length > 0) {
+                        setTimeout(() => {
+                            if (confirm(`AI detected ${data.auto_detected_damage.length} potential damage points. Add them to assessment?`)) {
+                                data.auto_detected_damage.forEach(damage => {
+                                    addAutoDetectedDamage(damage.x, damage.y, damage.type);
+                                });
+                            }
+                        }, 1000);
+                    }
+                } else {
+                    updateStatus('Error analyzing blueprint: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                updateStatus('Error analyzing blueprint');
+            });
+        }
+
+        function loadImageToCanvas(file) {
+            if (!file) {
+                console.log('No file provided to loadImageToCanvas');
+                return;
+            }
+            
+            updateStatus('Loading image to canvas...');
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    try {
+                        // Set canvas size to accommodate the image
+                        const maxWidth = 1200;
+                        const maxHeight = 800;
+                        
+                        let displayWidth = img.width;
+                        let displayHeight = img.height;
+                        
+                        // Scale down if image is too large
+                        if (img.width > maxWidth || img.height > maxHeight) {
+                            const scaleX = maxWidth / img.width;
+                            const scaleY = maxHeight / img.height;
+                            const scale = Math.min(scaleX, scaleY);
+                            
+                            displayWidth = img.width * scale;
+                            displayHeight = img.height * scale;
+                        }
+                        
+                        // Update canvas size
+                        canvas.width = displayWidth;
+                        canvas.height = displayHeight;
+                        
+                        // Clear and draw image
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
+                        
+                        // Store image data for redrawing
+                        currentImage = {
+                            img: img,
+                            scale: displayWidth / img.width,
+                            offsetX: 0,
+                            offsetY: 0,
+                            scaledWidth: displayWidth,
+                            scaledHeight: displayHeight,
+                            originalWidth: img.width,
+                            originalHeight: img.height
+                        };
+                        
+                        updateStatus('Image loaded successfully. Click to mark damage or set entry/exit points.');
+                        
+                        // Redraw any existing damage marks
+                        redrawCanvas();
+                        
+                    } catch (error) {
+                        console.error('Error loading image to canvas:', error);
+                        updateStatus('Error loading image to canvas');
+                    }
+                };
+                
+                img.onerror = function() {
+                    console.error('Failed to load image');
+                    updateStatus('Failed to load image file');
+                };
+                
+                img.src = e.target.result;
+            };
+            
+            reader.onerror = function() {
+                console.error('Failed to read file');
+                updateStatus('Failed to read file');
+            };
+            
+            reader.readAsDataURL(file);
+        }
+
+        function loadBlueprint(filename) {
+            currentFilename = filename;
+            updateStatus(`Loading ${filename} for rescue analysis...`);
+            
+            // Try to load the actual converted file if it exists
+            const imagePath = `/static/converted/${filename}`;  // Assuming static serving
+            
+            const img = new Image();
+            img.onload = function() {
+                // Successfully loaded the actual file
+                const maxWidth = 1200;
+                const maxHeight = 800;
+                
+                let displayWidth = img.width;
+                let displayHeight = img.height;
+                
+                // Scale down if image is too large
+                if (img.width > maxWidth || img.height > maxHeight) {
+                    const scaleX = maxWidth / img.width;
+                    const scaleY = maxHeight / img.height;
+                    const scale = Math.min(scaleX, scaleY);
+                    
+                    displayWidth = img.width * scale;
+                    displayHeight = img.height * scale;
+                }
+                
+                canvas.width = displayWidth;
+                canvas.height = displayHeight;
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, displayWidth, displayHeight);
+                
+                currentImage = {
+                    img: img,
+                    scale: displayWidth / img.width,
+                    offsetX: 0,
+                    offsetY: 0,
+                    scaledWidth: displayWidth,
+                    scaledHeight: displayHeight,
+                    originalWidth: img.width,
+                    originalHeight: img.height
+                };
+                
+                updateStatus(`${filename} loaded successfully. Ready for damage assessment.`);
+            };
+            
+            img.onerror = function() {
+                // If actual file loading fails, create a test blueprint
+                console.log('Could not load actual file, creating test blueprint');
+                createTestBlueprint(filename);
+            };
+            
+            img.src = imagePath;
+        }
+        
+        function createTestBlueprint(filename) {
+            // Create a test canvas for demonstration
+            canvas.width = 800;
+            canvas.height = 600;
+            
+            // Clear canvas
+            ctx.fillStyle = '#f8f8f8';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw building outline
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(50, 50, 700, 500);
+            
+            // Draw rooms
+            ctx.lineWidth = 2;
+            ctx.strokeRect(100, 100, 250, 200);  // Room 1
+            ctx.strokeRect(450, 100, 250, 200);  // Room 2
+            ctx.strokeRect(200, 350, 400, 150);  // Main Hall
+            
+            // Draw corridors
+            ctx.strokeRect(350, 100, 100, 400);  // Vertical corridor
+            ctx.strokeRect(100, 300, 600, 50);   // Horizontal corridor
+            
+            // Draw doors
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(350, 200);
+            ctx.lineTo(370, 200);
+            ctx.stroke();
+            
+            ctx.beginPath();
+            ctx.moveTo(450, 200);
+            ctx.lineTo(470, 200);
+            ctx.stroke();
+            
+            // Add labels
+            ctx.fillStyle = '#333';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Room A', 225, 200);
+            ctx.fillText('Room B', 575, 200);
+            ctx.fillText('Main Hall', 400, 425);
+            ctx.fillText('Corridor', 400, 325);
+            
+            // Add entrance/exit markers
+            ctx.fillStyle = '#4caf50';
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText('ENTRANCE', 125, 80);
+            ctx.fillText('EXIT', 675, 80);
+            
+            currentImage = {
+                img: null,
+                scale: 1,
+                offsetX: 0,
+                offsetY: 0,
+                scaledWidth: 800,
+                scaledHeight: 600,
+                originalWidth: 800,
+                originalHeight: 600
+            };
+            
+            updateStatus(`Test blueprint created for ${filename}. Ready for damage assessment.`);
+        }
+
+        function redrawCanvas() {
+            // Clear canvas first
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (currentImage && currentImage.img) {
+                // Redraw the image
+                const {img, offsetX, offsetY, scaledWidth, scaledHeight} = currentImage;
+                ctx.drawImage(img, offsetX || 0, offsetY || 0, scaledWidth, scaledHeight);
+            } else if (currentFilename) {
+                // If we have a filename but no image, show a placeholder
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.fillStyle = '#666';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Blueprint: ' + currentFilename, canvas.width/2, canvas.height/2 - 20);
+                ctx.fillText('Ready for damage assessment', canvas.width/2, canvas.height/2 + 20);
+            }
+            
+            // Draw damage marks
+            damageMarks.forEach(damage => {
+                drawDamageMarker(damage);
+            });
+            
+            // Draw path points
+            if (startPoint) {
+                drawPathPoint(startPoint, '#4caf50', 'START');
+            }
+            if (endPoint) {
+                drawPathPoint(endPoint, '#f44336', 'EXIT');
+            }
+            
+            // Draw safe path
+            if (safePath && safePath.length > 0) {
+                drawSafePath(safePath);
+            }
+        }
+
+        function drawDamageMarker(damage) {
+            const colors = {
+                'collapsed_wall': '#f44336',
+                'crack': '#ff9800',
+                'leaning_beam': '#f44336',
+                'blocked_passage': '#ff9800'
+            };
+            
+            const color = colors[damage.type] || '#f44336';
+            const isAutoDetected = damage.auto_detected || false;
+            
+            // Draw main circle
+            ctx.beginPath();
+            ctx.arc(damage.x, damage.y, 15, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            // Different border style for auto-detected
+            ctx.strokeStyle = isAutoDetected ? '#ffff00' : '#fff';
+            ctx.lineWidth = isAutoDetected ? 3 : 2;
+            ctx.setLineDash(isAutoDetected ? [3, 3] : []);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Add damage type icon
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            
+            const icons = {
+                'collapsed_wall': '🧱',
+                'crack': '⚡',
+                'leaning_beam': '📏',
+                'blocked_passage': '🚪'
+            };
+            
+            ctx.fillText(icons[damage.type] || '⚠', damage.x, damage.y + 4);
+            
+            // Add "AI" indicator for auto-detected
+            if (isAutoDetected) {
+                ctx.fillStyle = '#ffff00';
+                ctx.font = 'bold 8px Arial';
+                ctx.fillText('AI', damage.x + 12, damage.y - 8);
+            }
+        }
+
+        function drawPathPoint(point, color, label) {
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, 10, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 8px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(label.charAt(0), point.x, point.y + 3);
+        }
+
+        function drawSafePath(path) {
+            if (!path || path.length < 2) {
+                console.log('No valid path to draw:', path);
+                return;
+            }
+            
+            console.log('Drawing path with', path.length, 'points');
+            
+            // Draw path with multiple layers for visibility
+            
+            // Background stroke (white)
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 8;
+            ctx.setLineDash([]);
+            
+            ctx.beginPath();
+            ctx.moveTo(path[0][0], path[0][1]);
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i][0], path[i][1]);
+            }
+            ctx.stroke();
+            
+            // Main path stroke (green)
+            ctx.strokeStyle = '#4caf50';
+            ctx.lineWidth = 4;
+            ctx.setLineDash([12, 6]);
+            
+            ctx.beginPath();
+            ctx.moveTo(path[0][0], path[0][1]);
+            for (let i = 1; i < path.length; i++) {
+                ctx.lineTo(path[i][0], path[i][1]);
+            }
+            ctx.stroke();
+            
+            // Direction arrows along the path
+            ctx.fillStyle = '#2e7d32';
+            ctx.setLineDash([]);
+            
+            for (let i = 10; i < path.length - 10; i += 20) {
+                const x = path[i][0];
+                const y = path[i][1];
+                
+                // Draw arrow pointing toward next point
+                if (i + 5 < path.length) {
+                    const nextX = path[i + 5][0];
+                    const nextY = path[i + 5][1];
+                    const angle = Math.atan2(nextY - y, nextX - x);
+                    
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(angle);
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(-8, -4);
+                    ctx.lineTo(-8, 4);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+            }
+            
+            // Reset line dash
+            ctx.setLineDash([]);
+        }
+
+        function setPathMode(mode) {
+            pathMode = mode;
+            updateStatus(`Click on blueprint to set ${mode} point.`);
+        }
+
+        function findSafePath() {
+            if (!startPoint || !endPoint) {
+                alert('Please set both entry and exit points first.');
+                return;
+            }
+            
+            if (!currentFilename) {
+                // If no filename, use a default for canvas-only operation
+                currentFilename = 'canvas_analysis.png';
+            }
+            
+            const data = {
+                filename: currentFilename,
+                start_point: [startPoint.x, startPoint.y],
+                end_point: [endPoint.x, endPoint.y],
+                damage_marks: damageMarks
+            };
+            
+            console.log('Sending pathfinding request:', data);
+            updateStatus('Calculating safe path...');
+            
+            fetch('/find_safe_path', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                console.log('Pathfinding response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Pathfinding response data:', data);
+                
+                if (data.status === 'success' || data.status === 'warning') {
+                    if (data.path && data.path.length > 0) {
+                        safePath = data.path;
+                        
+                        let statusMsg = '';
+                        if (data.status === 'success') {
+                            statusMsg = `✅ Safe path found! Length: ${data.path_length} points, Est. time: ${data.estimated_time.toFixed(1)}s`;
+                        } else {
+                            statusMsg = `⚠️ ${data.message}`;
+                        }
+                        
+                        if (data.safety_analysis) {
+                            statusMsg += ` | Safety: ${data.safety_analysis.overall_safety}`;
+                            if (data.safety_analysis.risk_points > 0) {
+                                statusMsg += ` (${data.safety_analysis.risk_points} risk points)`;
+                            }
+                        }
+                        
+                        updateStatus(statusMsg);
+                        redrawCanvas();
+                        
+                        console.log('Path drawn with', safePath.length, 'points');
+                        
+                        // Show detailed safety analysis
+                        if (data.safety_analysis && data.safety_analysis.warnings && data.safety_analysis.warnings.length > 0) {
+                            setTimeout(() => {
+                                alert('Safety Warnings:\n' + data.safety_analysis.warnings.join('\n'));
+                            }, 500);
+                        }
+                    } else {
+                        updateStatus('No path data received from server');
+                        console.log('No path in response:', data);
+                    }
+                } else {
+                    updateStatus(data.message || data.error || 'Failed to calculate safe path.');
+                    console.log('Path calculation failed:', data);
+                }
+            })
+            .catch(error => {
+                console.error('Pathfinding error:', error);
+                updateStatus('Error calculating safe path: ' + error.message);
+            });
+        }
+
+        function generateRiskZones() {
+            // Visual feedback for risk zone generation
+            updateStatus('Risk zones generated based on damage assessment.');
+            updateRiskLevel();
+        }
+
+        function saveDamageAssessment() {
+            if (!currentFilename || damageMarks.length === 0) {
+                alert('Please load a blueprint and mark some damage first.');
+                return;
+            }
+            
+            const data = {
+                filename: currentFilename,
+                damage_marks: damageMarks
+            };
+            
+            fetch('/save_damage', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    updateStatus(`Damage assessment saved! ${data.damage_summary.total_damage} damage points recorded.`);
+                } else {
+                    updateStatus('Error saving damage assessment.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                updateStatus('Error saving damage assessment.');
+            });
+        }
+
+        function clearDamage() {
+            damageMarks = [];
+            updateDamageList();
+            updateStatus('All damage marks cleared.');
+            redrawCanvas();
+        }
+
+        function clearPath() {
+            startPoint = null;
+            endPoint = null;
+            safePath = null;
+            pathMode = null;
+            updateStatus('Path cleared.');
+            redrawCanvas();
+        }
+
+        function updateDamageList() {
+            const container = document.getElementById('damageItems');
+            if (damageMarks.length === 0) {
+                container.innerHTML = 'No damage recorded yet';
+            } else {
+                container.innerHTML = damageMarks.map((damage, index) => 
+                    `<div class="damage-item">
+                        ${index + 1}. ${damage.type.replace('_', ' ')} at (${Math.round(damage.x)}, ${Math.round(damage.y)})
+                    </div>`
+                ).join('');
+            }
+            
+            document.getElementById('damageCount').textContent = `Damage Points: ${damageMarks.length}`;
+            updateRiskLevel();
+        }
+
+        function updateRiskLevel() {
+            const highRiskTypes = ['collapsed_wall', 'leaning_beam'];
+            const highRiskCount = damageMarks.filter(d => highRiskTypes.includes(d.type)).length;
+            
+            let riskLevel = 'Safe';
+            if (highRiskCount > 2) {
+                riskLevel = 'High Risk';
+            } else if (damageMarks.length > 3) {
+                riskLevel = 'Moderate Risk';
+            }
+            
+            document.getElementById('riskLevel').textContent = `Risk Level: ${riskLevel}`;
+        }
+
+        function updateStatus(message) {
+            document.getElementById('statusDisplay').textContent = message;
+        }
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            const contentDiv = document.getElementById('resultsContent');
+            
+            if (data.error) {
+                contentDiv.innerHTML = `<p style="color: red;">Error: ${data.error}</p>`;
+            } else {
+                let structuralInfo = '';
+                if (data.structural_elements) {
+                    const struct = data.structural_elements;
+                    structuralInfo = `
+                        <p><strong>🏗️ Building Structure:</strong></p>
+                        <ul>
+                            <li>Walls detected: ${struct.walls ? struct.walls.length : 0}</li>
+                            <li>Rooms detected: ${struct.rooms ? struct.rooms.length : 0}</li>
+                            <li>Structure analysis: ${struct.structure_detected ? 'Complete' : 'Basic'}</li>
+                        </ul>
+                    `;
+                }
+                
+                let autoDetectedInfo = '';
+                if (data.auto_detected_damage && data.auto_detected_damage.length > 0) {
+                    autoDetectedInfo = `
+                        <p><strong>🤖 Auto-Detected Potential Damage:</strong></p>
+                        <ul>
+                            ${data.auto_detected_damage.map(damage => 
+                                `<li>${damage.type.replace('_', ' ')} at (${damage.x}, ${damage.y}) - Confidence: ${Math.round(damage.confidence * 100)}%
+                                <button onclick="addAutoDetectedDamage(${damage.x}, ${damage.y}, '${damage.type}')" class="btn" style="margin-left: 10px; padding: 2px 8px; font-size: 12px;">Add to Assessment</button>
+                                </li>`
+                            ).join('')}
+                        </ul>
+                    `;
+                }
+                
+                contentDiv.innerHTML = `
+                    <p><strong>📄 File:</strong> ${data.filename}</p>
+                    <p><strong>📐 Dimensions:</strong> ${data.dimensions.width} x ${data.dimensions.height} pixels</p>
+                    <p><strong>🔍 Structural Elements:</strong> ${data.contours_found}</p>
+                    <p><strong>📝 Text Lines Found:</strong> ${data.detected_text_lines}</p>
+                    ${structuralInfo}
+                    ${autoDetectedInfo}
+                    ${data.detected_text.length > 0 ? 
+                        `<p><strong>🔤 Detected Text:</strong></p><ul>${data.detected_text.map(text => `<li>${text}</li>`).join('')}</ul>` 
+                        : '<p>No text detected</p>'
+                    }
+                `;
+            }
+            
+            resultsDiv.style.display = 'block';
+        }
+
+        function addAutoDetectedDamage(x, y, type) {
+            const damage = {
+                x: x,
+                y: y,
+                type: type,
+                timestamp: new Date().toISOString(),
+                auto_detected: true
+            };
+            damageMarks.push(damage);
+            updateDamageList();
+            updateStatus(`Auto-detected ${type.replace('_', ' ')} added to assessment`);
+            redrawCanvas();
+        }
+    </script>
+</body>
+</html>
