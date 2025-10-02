@@ -6,7 +6,7 @@ AI-powered construction blueprint analyzer for material calculations and structu
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/TobleroneX/blueprint-analyzer.git
+git clone https://github.com/Kishan0703/Structural-Stability-Assessment-Tool-.git
 cd blueprint-analyzer
 ```
 
