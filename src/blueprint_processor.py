@@ -11,6 +11,8 @@ import math
 import random
 from scipy.spatial.distance import euclidean
 from collections import deque
+import base64
+from io import BytesIO
 
 class BlueprintProcessor:
     """
@@ -33,8 +35,13 @@ class BlueprintProcessor:
         self.annotations_dir = self.output_dir / 'annotations'
         self.damage_dir = self.output_dir / 'damage_assessment'
         self.risk_zones_dir = self.output_dir / 'risk_zones'
+        self.victims_dir = self.output_dir / 'victims'
+        self.victim_photos_dir = self.output_dir / 'victim_photos'
+        self.secondary_hazards_dir = self.output_dir / 'secondary_hazards'
         
-        for dir_path in [self.converted_dir, self.annotations_dir, self.damage_dir, self.risk_zones_dir]:
+        for dir_path in [self.converted_dir, self.annotations_dir, self.damage_dir, 
+                         self.risk_zones_dir, self.victims_dir, self.victim_photos_dir, 
+                         self.secondary_hazards_dir]:
             dir_path.mkdir(exist_ok=True)
         
         # Damage types and their risk levels
@@ -43,6 +50,24 @@ class BlueprintProcessor:
             'crack': {'risk': 'moderate', 'color': (255, 165, 0), 'radius': 30},
             'leaning_beam': {'risk': 'high', 'color': (255, 0, 0), 'radius': 40},
             'blocked_passage': {'risk': 'moderate', 'color': (255, 165, 0), 'radius': 35}
+        }
+        
+        # Victim status types and their visual properties
+        self.victim_types = {
+            'confirmed': {'priority': 'critical', 'color': (255, 0, 0), 'radius': 40},  # Red
+            'suspected': {'priority': 'high', 'color': (255, 140, 0), 'radius': 35},    # Orange
+            'responsive': {'priority': 'high', 'color': (255, 215, 0), 'radius': 30},   # Gold
+            'rescued': {'priority': 'low', 'color': (0, 128, 0), 'radius': 30}          # Green
+        }
+        
+        # Secondary hazards and their visual properties
+        self.secondary_hazards = {
+            'fire': {'risk': 'critical', 'color': (255, 69, 0), 'radius': 50},          # Red-orange
+            'gas_leak': {'risk': 'high', 'color': (148, 0, 211), 'radius': 60},         # Purple
+            'flooding': {'risk': 'moderate', 'color': (0, 0, 255), 'radius': 45},       # Blue
+            'unstable_floor': {'risk': 'high', 'color': (165, 42, 42), 'radius': 40},   # Brown
+            'blocked_exit': {'risk': 'high', 'color': (255, 20, 147), 'radius': 30},    # Pink
+            'electrical': {'risk': 'high', 'color': (255, 255, 0), 'radius': 35}        # Yellow
         }
         
     def convert_pdfs(self):
@@ -563,7 +588,260 @@ class BlueprintProcessor:
         
         return risk_zones
     
-    def find_safe_path(self, filename, start_point, end_point, damage_marks=None):
+    def generate_heatmap(self, filename, damage_marks, victim_markers, secondary_hazards, intensity=1.0):
+        """
+        Generate a risk heatmap overlay based on damage marks, victim markers, and secondary hazards
+        
+        Args:
+            filename (str): Blueprint filename
+            damage_marks (list): List of damage marks with coordinates and types
+            victim_markers (list): List of victim markers with coordinates and types
+            secondary_hazards (list): List of secondary hazard markers with coordinates and types
+            intensity (float): Intensity factor for the heatmap (1.0 = normal, >1 = more intense)
+            
+        Returns:
+            dict: Heatmap generation results with base64 encoded image and statistics
+        """
+        try:
+            # Load the original blueprint image
+            img_path = None
+            for ext in ['png', 'jpg', 'jpeg']:
+                potential_path = self.converted_dir / f"{Path(filename).stem}.{ext}"
+                if potential_path.exists():
+                    img_path = potential_path
+                    break
+                    
+            if not img_path:
+                # Check if file exists with same name
+                potential_path = self.converted_dir / filename
+                if potential_path.exists():
+                    img_path = potential_path
+                    
+            if not img_path:
+                return {
+                    'status': 'error', 
+                    'message': f'Image file not found: {filename}'
+                }
+            
+            # Load the image and get dimensions
+            blueprint = cv2.imread(str(img_path))
+            height, width = blueprint.shape[:2]
+            
+            # Create empty heatmap of same size
+            heatmap = np.zeros((height, width), dtype=np.float32)
+            
+            # Process damage marks
+            for mark in damage_marks:
+                x, y = int(mark.get('x', 0)), int(mark.get('y', 0))
+                damage_type = mark.get('type', 'crack')
+                
+                if damage_type in self.damage_types:
+                    risk_info = self.damage_types[damage_type]
+                    risk_level = risk_info['risk']
+                    radius = risk_info['radius']
+                    
+                    # Adjust radius based on damage type and intensity
+                    adjusted_radius = int(radius * intensity)
+                    
+                    # Apply different weights based on risk level
+                    weight = 0.5  # Default
+                    if risk_level == 'high':
+                        weight = 1.0
+                    elif risk_level == 'moderate':
+                        weight = 0.7
+                    
+                    # Create Gaussian distribution around the damage point
+                    for i in range(max(0, x - adjusted_radius), min(width, x + adjusted_radius)):
+                        for j in range(max(0, y - adjusted_radius), min(height, y + adjusted_radius)):
+                            # Compute distance
+                            distance = np.sqrt((x - i)**2 + (y - j)**2)
+                            
+                            # Apply Gaussian falloff
+                            if distance < adjusted_radius:
+                                # Normalize distance to 0-1
+                                normalized_dist = distance / adjusted_radius
+                                # Gaussian formula: e^(-distance²/sigma²)
+                                sigma = 0.3
+                                falloff = np.exp(-(normalized_dist**2) / (2 * sigma**2))
+                                # Apply weight and accumulate
+                                heatmap[j, i] += weight * falloff * intensity
+            
+            # Process victim markers (they create hotspots)
+            for victim in victim_markers:
+                x, y = int(victim.get('x', 0)), int(victim.get('y', 0))
+                victim_type = victim.get('type', 'suspected')
+                
+                if victim_type in self.victim_types:
+                    victim_info = self.victim_types[victim_type]
+                    priority = victim_info['priority']
+                    radius = victim_info['radius']
+                    
+                    # Adjust radius and weight based on priority
+                    adjusted_radius = int(radius * intensity)
+                    weight = 0.5  # Default
+                    
+                    if priority == 'critical':
+                        weight = 1.0
+                    elif priority == 'high':
+                        weight = 0.8
+                    elif priority == 'low':
+                        weight = 0.3
+                    
+                    # Create hotspot around victim
+                    for i in range(max(0, x - adjusted_radius), min(width, x + adjusted_radius)):
+                        for j in range(max(0, y - adjusted_radius), min(height, y + adjusted_radius)):
+                            # Compute distance
+                            distance = np.sqrt((x - i)**2 + (y - j)**2)
+                            
+                            # Apply falloff
+                            if distance < adjusted_radius:
+                                # Sharper falloff for victims (critical areas)
+                                normalized_dist = distance / adjusted_radius
+                                falloff = max(0, 1 - normalized_dist**1.5)
+                                # Apply weight and accumulate
+                                heatmap[j, i] += weight * falloff * intensity
+            
+            # Process secondary hazards (they create wide-area effects)
+            for hazard in secondary_hazards:
+                x, y = int(hazard.get('x', 0)), int(hazard.get('y', 0))
+                hazard_type = hazard.get('type', 'fire')
+                
+                if hazard_type in self.secondary_hazards:
+                    hazard_info = self.secondary_hazards[hazard_type]
+                    risk = hazard_info['risk']
+                    radius = hazard_info['radius']
+                    
+                    # Adjust radius based on hazard type (some hazards affect wider areas)
+                    adjusted_radius = int(radius * intensity)
+                    if hazard_type == 'gas_leak':
+                        adjusted_radius = int(adjusted_radius * 1.5)  # Gas leaks affect wider areas
+                    elif hazard_type == 'fire':
+                        adjusted_radius = int(adjusted_radius * 1.3)  # Fire spreads
+                    
+                    # Apply different weights based on risk level
+                    weight = 0.6  # Default
+                    if risk == 'critical':
+                        weight = 1.0
+                    elif risk == 'high':
+                        weight = 0.8
+                    
+                    # Create wide-area effect
+                    for i in range(max(0, x - adjusted_radius), min(width, x + adjusted_radius)):
+                        for j in range(max(0, y - adjusted_radius), min(height, y + adjusted_radius)):
+                            # Compute distance
+                            distance = np.sqrt((x - i)**2 + (y - j)**2)
+                            
+                            # Apply distance-based falloff
+                            if distance < adjusted_radius:
+                                # Different falloff patterns for different hazards
+                                normalized_dist = distance / adjusted_radius
+                                
+                                falloff = 0.0
+                                if hazard_type == 'fire':
+                                    # Fire has more concentrated heat
+                                    falloff = np.exp(-(normalized_dist**2) / 0.3)
+                                elif hazard_type == 'gas_leak':
+                                    # Gas spreads more uniformly
+                                    falloff = max(0, 1 - normalized_dist**1.2)
+                                elif hazard_type == 'flooding':
+                                    # Water flows and pools
+                                    falloff = max(0, 1 - normalized_dist**1.8)
+                                else:
+                                    # Default falloff
+                                    falloff = max(0, 1 - normalized_dist)
+                                
+                                # Apply weight and accumulate
+                                heatmap[j, i] += weight * falloff * intensity
+            
+            # Normalize heatmap to 0-1 range
+            if np.max(heatmap) > 0:
+                heatmap = heatmap / np.max(heatmap)
+            
+            # Apply color mapping to create visual heatmap
+            # Use a custom colormap: green (safe) -> yellow -> orange -> red (danger)
+            colored_heatmap = np.zeros((height, width, 4), dtype=np.uint8)
+            
+            # Define risk thresholds
+            low_risk_threshold = 0.3
+            moderate_risk_threshold = 0.6
+            high_risk_threshold = 0.8
+            
+            # Statistics counters for risk zones
+            total_pixels = height * width
+            high_risk_pixels = 0
+            moderate_risk_pixels = 0
+            low_risk_pixels = 0
+            safe_pixels = 0
+            
+            for i in range(width):
+                for j in range(height):
+                    value = heatmap[j, i]
+                    
+                    # Apply thresholding for better visualization
+                    alpha = int(min(value * 220, 220))  # Cap at 220 to not completely hide blueprint
+                    
+                    if value >= high_risk_threshold:
+                        # High risk (red)
+                        colored_heatmap[j, i] = [244, 67, 54, alpha]
+                        high_risk_pixels += 1
+                    elif value >= moderate_risk_threshold:
+                        # Moderate risk (orange)
+                        colored_heatmap[j, i] = [255, 152, 0, alpha]
+                        moderate_risk_pixels += 1
+                    elif value >= low_risk_threshold:
+                        # Low risk (yellow)
+                        colored_heatmap[j, i] = [255, 235, 59, alpha]
+                        low_risk_pixels += 1
+                    else:
+                        # Safe (green or transparent)
+                        if value > 0:
+                            # Very low risk (green)
+                            green_alpha = int(value * 180)
+                            colored_heatmap[j, i] = [76, 175, 80, green_alpha]
+                            low_risk_pixels += 1
+                        else:
+                            # No risk (transparent)
+                            colored_heatmap[j, i] = [0, 0, 0, 0]
+                            safe_pixels += 1
+            
+            # Calculate risk statistics
+            stats = {
+                'high_risk_percentage': (high_risk_pixels / total_pixels) * 100,
+                'moderate_risk_percentage': (moderate_risk_pixels / total_pixels) * 100,
+                'low_risk_percentage': (low_risk_pixels / total_pixels) * 100,
+                'safe_percentage': (safe_pixels / total_pixels) * 100
+            }
+            
+            # Convert the heatmap to PIL Image for overlay on blueprint
+            heatmap_img = Image.fromarray(colored_heatmap)
+            
+            # Save the heatmap image
+            base_name = Path(filename).stem
+            heatmap_filename = f"{base_name}_heatmap.png"
+            heatmap_path = self.risk_zones_dir / heatmap_filename
+            heatmap_img.save(heatmap_path)
+            
+            # Convert to base64 for web display
+            buffered = BytesIO()
+            heatmap_img.save(buffered, format="PNG")
+            heatmap_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+            
+            return {
+                'status': 'success',
+                'heatmap_image': heatmap_base64,
+                'heatmap_path': str(heatmap_path),
+                'stats': stats
+            }
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {
+                'status': 'error',
+                'message': f'Error generating heatmap: {str(e)}'
+            }
+    
+    def find_safe_path(self, filename, start_point, end_point, damage_marks=None, victim_markers=None, prioritize_victims=False):
         """
         Find a safe path through the blueprint using intelligent indoor navigation (simplified and robust)
         
@@ -572,6 +850,8 @@ class BlueprintProcessor:
             start_point (tuple): Starting coordinates (x, y)
             end_point (tuple): Ending coordinates (x, y)
             damage_marks (list): List of damage marks to avoid
+            victim_markers (list, optional): List of victim markers for path planning
+            prioritize_victims (bool, optional): Whether to prioritize paths to victims
             
         Returns:
             dict: Safe path data with coordinates and safety analysis
@@ -1256,3 +1536,210 @@ class BlueprintProcessor:
             'safe_segments': len(path) - dangerous_segments,
             'danger_ratio': round(danger_ratio * 100, 1)
         }
+        
+    def get_all_assessments(self):
+        """
+        Get all damage assessments for the command center dashboard
+        
+        Returns:
+            list: All damage assessment data
+        """
+        assessments = []
+        
+        try:
+            # Get all damage assessment files
+            assessment_files = list(self.damage_dir.glob('*_damage_assessment.json'))
+            
+            for file in assessment_files:
+                try:
+                    with open(file, 'r') as f:
+                        data = json.load(f)
+                        
+                        # Get image filename from assessment data
+                        filename = data.get('filename', file.stem.replace('_damage_assessment', ''))
+                        
+                        # Count damage types
+                        damage_counts = {}
+                        for mark in data.get('damage_marks', []):
+                            damage_type = mark.get('type', 'unknown')
+                            damage_counts[damage_type] = damage_counts.get(damage_type, 0) + 1
+                            
+                        # Create assessment summary
+                        assessment = {
+                            'filename': filename,
+                            'file_path': str(file),
+                            'timestamp': data.get('timestamp', ''),
+                            'total_damage': len(data.get('damage_marks', [])),
+                            'damage_types': damage_counts,
+                            'high_risk_zones': data.get('high_risk_areas', 0),
+                            'moderate_risk_zones': data.get('moderate_risk_areas', 0),
+                            'status': 'assessed'
+                        }
+                        
+                        assessments.append(assessment)
+                        
+                except Exception as e:
+                    print(f"Error processing assessment file {file}: {str(e)}")
+                    
+            # Also get files without assessments
+            all_image_files = set()
+            for ext in ['png', 'jpg', 'jpeg']:
+                image_files = [file.stem for file in self.converted_dir.glob(f'*.{ext}')]
+                all_image_files.update(image_files)
+                
+            assessed_files = set(a['filename'].split('.')[0] for a in assessments)
+            
+            # Add unassessed files
+            for unassessed in all_image_files - assessed_files:
+                for ext in ['png', 'jpg', 'jpeg']:
+                    if (self.converted_dir / f"{unassessed}.{ext}").exists():
+                        assessments.append({
+                            'filename': f"{unassessed}.{ext}",
+                            'status': 'unassessed',
+                            'total_damage': 0,
+                            'damage_types': {},
+                            'high_risk_zones': 0,
+                            'moderate_risk_zones': 0
+                        })
+                        break
+                        
+            return assessments
+            
+        except Exception as e:
+            print(f"Error getting assessments: {str(e)}")
+            return []
+            
+    def process_voice_command(self, command, position):
+        """
+        Process voice commands for hands-free blueprint annotation
+        
+        Args:
+            command (str): Voice command text
+            position (dict): Current cursor position with x,y coordinates
+            
+        Returns:
+            dict: Command processing result
+        """
+        command = command.strip().lower()
+        x, y = position.get('x', 0), position.get('y', 0)
+        result = {
+            'success': False,
+            'message': 'Command not recognized',
+            'action': None
+        }
+        
+        # Detect damage type commands
+        damage_keywords = {
+            'wall collapse': 'collapsed_wall',
+            'collapsed wall': 'collapsed_wall',
+            'wall damage': 'collapsed_wall',
+            'crack': 'crack',
+            'cracks': 'crack',
+            'structural crack': 'crack',
+            'beam damage': 'leaning_beam',
+            'leaning beam': 'leaning_beam',
+            'unstable beam': 'leaning_beam',
+            'blocked passage': 'blocked_passage',
+            'blocked path': 'blocked_passage',
+            'blockage': 'blocked_passage',
+            'obstruction': 'blocked_passage'
+        }
+        
+        # Check for damage marking commands
+        for keyword, damage_type in damage_keywords.items():
+            if keyword in command or f"mark {keyword}" in command:
+                # Create damage mark
+                mark = {
+                    'x': x,
+                    'y': y,
+                    'type': damage_type,
+                    'via_voice': True,
+                    'timestamp': json.dumps({'timestamp': 'now'}, default=str)
+                }
+                
+                result = {
+                    'success': True,
+                    'message': f"Marked {damage_type.replace('_', ' ')} at position ({x}, {y})",
+                    'action': 'add_damage_mark',
+                    'mark': mark
+                }
+                return result
+                
+        # Check for pathfinding commands
+        if 'find path' in command or 'safe path' in command or 'evacuation route' in command:
+            result = {
+                'success': True,
+                'message': 'Ready to find path. Please specify start and end points.',
+                'action': 'prepare_pathfinding'
+            }
+            return result
+            
+        # Check for analysis commands
+        if 'analyze' in command or 'detect damage' in command or 'scan blueprint' in command:
+            result = {
+                'success': True,
+                'message': 'Starting automatic damage detection...',
+                'action': 'analyze_blueprint'
+            }
+            return result
+        
+        # Check for victim localization commands
+        if 'victim' in command or 'person trapped' in command or 'survivor' in command:
+            victim_type = 'suspected'
+            if 'confirmed' in command:
+                victim_type = 'confirmed'
+            elif 'responsive' in command:
+                victim_type = 'responsive'
+            
+            result = {
+                'success': True,
+                'message': f'Marking {victim_type} victim at current position',
+                'action': 'mark_victim',
+                'victim_type': victim_type
+            }
+            return result
+            
+        # Check for secondary hazard commands
+        if any(hazard in command for hazard in ['fire', 'gas leak', 'flooding', 'electrical', 'blocked exit']):
+            hazard_type = 'fire'  # default
+            
+            if 'gas' in command or 'leak' in command:
+                hazard_type = 'gas_leak'
+            elif 'flood' in command or 'water' in command:
+                hazard_type = 'flooding'
+            elif 'floor' in command or 'unstable' in command:
+                hazard_type = 'unstable_floor'
+            elif 'exit' in command or 'blocked' in command:
+                hazard_type = 'blocked_exit'
+            elif 'electric' in command:
+                hazard_type = 'electrical'
+                
+            result = {
+                'success': True,
+                'message': f'Marking {hazard_type.replace("_", " ")} hazard at current position',
+                'action': 'mark_secondary_hazard',
+                'hazard_type': hazard_type
+            }
+            return result
+            
+        # Check for navigation commands
+        if 'zoom in' in command:
+            result = {
+                'success': True,
+                'message': 'Zooming in',
+                'action': 'zoom',
+                'factor': 1.2
+            }
+            return result
+            
+        if 'zoom out' in command:
+            result = {
+                'success': True, 
+                'message': 'Zooming out',
+                'action': 'zoom',
+                'factor': 0.8
+            }
+            return result
+            
+        # Unknown command
+        return result

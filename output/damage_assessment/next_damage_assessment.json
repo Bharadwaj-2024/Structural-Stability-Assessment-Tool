@@ -1,0 +1,106 @@
+{
+  "filename": "next.jpg",
+  "damage_marks": [
+    {
+      "x": 47,
+      "y": 264,
+      "type": "crack",
+      "timestamp": "2025-10-03T06:18:20.356Z",
+      "auto_detected": true
+    },
+    {
+      "x": 48,
+      "y": 255,
+      "type": "crack",
+      "timestamp": "2025-10-03T06:18:20.367Z",
+      "auto_detected": true
+    },
+    {
+      "x": 167,
+      "y": 215,
+      "type": "crack",
+      "timestamp": "2025-10-03T06:18:20.367Z",
+      "auto_detected": true
+    },
+    {
+      "x": 222,
+      "y": 154,
+      "type": "crack",
+      "timestamp": "2025-10-03T06:18:20.367Z",
+      "auto_detected": true
+    },
+    {
+      "x": 36,
+      "y": 243,
+      "type": "blocked_passage",
+      "timestamp": "2025-10-03T06:18:20.367Z",
+      "auto_detected": true
+    }
+  ],
+  "risk_zones": [
+    {
+      "x": 47,
+      "y": 264,
+      "radius": 30,
+      "risk_level": "moderate",
+      "damage_type": "crack",
+      "color": [
+        255,
+        165,
+        0
+      ]
+    },
+    {
+      "x": 48,
+      "y": 255,
+      "radius": 30,
+      "risk_level": "moderate",
+      "damage_type": "crack",
+      "color": [
+        255,
+        165,
+        0
+      ]
+    },
+    {
+      "x": 167,
+      "y": 215,
+      "radius": 30,
+      "risk_level": "moderate",
+      "damage_type": "crack",
+      "color": [
+        255,
+        165,
+        0
+      ]
+    },
+    {
+      "x": 222,
+      "y": 154,
+      "radius": 30,
+      "risk_level": "moderate",
+      "damage_type": "crack",
+      "color": [
+        255,
+        165,
+        0
+      ]
+    },
+    {
+      "x": 36,
+      "y": 243,
+      "radius": 35,
+      "risk_level": "moderate",
+      "damage_type": "blocked_passage",
+      "color": [
+        255,
+        165,
+        0
+      ]
+    }
+  ],
+  "timestamp": "{\"timestamp\": \"now\"}",
+  "total_damage_points": 5,
+  "high_risk_areas": 0,
+  "moderate_risk_areas": 5
+}

@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Emergency Blueprint Rescue Analyzer</title>
+    <!-- Socket.IO client library -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -99,6 +101,175 @@
         .legend-safe { background-color: #4caf50; }
         .legend-moderate { background-color: #ff9800; }
         .legend-high { background-color: #f44336; }
+        /* Collaboration Features */
+        .collaborators-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(255,255,255,0.9);
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 100;
+            min-width: 200px;
+            max-width: 300px;
+        }
+        .collaborator {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 4px;
+            background-color: #f5f5f5;
+        }
+        .collaborator-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        .remote-cursor {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .cursor-label {
+            position: absolute;
+            background-color: rgba(0,0,0,0.7);
+            color: white;
+            font-size: 12px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            transform: translate(15px, 15px);
+            white-space: nowrap;
+        }
+        /* Voice Command Features */
+        .voice-commands {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .voice-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #d32f2f;
+            color: white;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            transition: all 0.3s;
+        }
+        /* Heatmap Controls */
+        .heatmap-controls {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e3f2fd;
+            border-radius: 8px;
+            border: 2px solid #2196f3;
+        }
+        .heatmap-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0;
+            justify-content: center;
+        }
+        .heatmap-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .risk-gradient {
+            height: 20px;
+            width: 200px;
+            margin: 10px auto;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #4caf50, #ffeb3b, #ff9800, #f44336);
+        }
+        .heatmap-toggle {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+            margin: 0 15px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .voice-btn:hover {
+            transform: scale(1.1);
+        }
+        .voice-btn.listening {
+            animation: pulse 1.5s infinite;
+            background-color: #4caf50;
+        }
+        .voice-tooltip {
+            position: absolute;
+            top: -40px;
+            right: 0;
+            background-color: rgba(0,0,0,0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        .voice-btn:hover + .voice-tooltip {
+            opacity: 1;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
         .btn {
             background-color: #d32f2f;
             color: white;
@@ -193,8 +364,125 @@
             
             <div style="margin-top: 15px;">
                 <button class="btn" onclick="clearDamage()">Clear All Damage</button>
-                <button class="btn" onclick="generateRiskZones()">Generate Risk Zones</button>
                 <button class="btn" onclick="saveDamageAssessment()">Save Assessment</button>
+            </div>
+        </div>
+        
+        <!-- Risk Heatmap Tools -->
+        <div class="heatmap-tools" style="margin: 20px 0; padding: 15px; background-color: #ffebee; border-radius: 8px; border: 2px solid #f44336;">
+            <h3>🔥 Risk Heatmap</h3>
+            <p>Generate a heatmap to visualize risk levels based on damage, victims, and hazards:</p>
+            
+            <div style="margin: 10px 0;">
+                <button class="btn" id="generateHeatmapBtn" onclick="generateHeatmap()">Generate Heatmap</button>
+                <button class="btn" id="toggleHeatmapBtn" onclick="toggleHeatmap()">Show Heatmap</button>
+                <button class="btn" onclick="clearRiskZones()">Clear Heatmap</button>
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <label for="heatmapOpacity">Opacity: <span id="heatmapOpacityValue">70%</span></label>
+                <input type="range" id="heatmapOpacity" min="0.1" max="1.0" step="0.1" value="0.7" 
+                       oninput="updateHeatmapOpacity(this.value)" style="width: 100%;">
+            </div>
+            
+            <div style="margin-top: 15px;">
+                <label for="heatmapIntensity">Intensity: <span id="heatmapIntensityValue">100%</span></label>
+                <input type="range" id="heatmapIntensity" min="0.5" max="2.0" step="0.1" value="1.0" 
+                       oninput="updateHeatmapIntensity(this.value)" style="width: 100%;">
+            </div>
+            
+            <div style="margin-top: 15px; display: flex; justify-content: space-between; text-align: center;">
+                <div style="background-color: #f44336; color: white; padding: 5px; border-radius: 5px; width: 23%;">
+                    High Risk<br><span id="highRiskPercentage">0.0%</span>
+                </div>
+                <div style="background-color: #ff9800; color: white; padding: 5px; border-radius: 5px; width: 23%;">
+                    Moderate<br><span id="moderateRiskPercentage">0.0%</span>
+                </div>
+                <div style="background-color: #ffeb3b; color: black; padding: 5px; border-radius: 5px; width: 23%;">
+                    Low Risk<br><span id="lowRiskPercentage">0.0%</span>
+                </div>
+                <div style="background-color: #4caf50; color: white; padding: 5px; border-radius: 5px; width: 23%;">
+                    Safe<br><span id="safePercentage">100.0%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Victim Localization Tools -->
+        <div class="victim-tools" style="margin: 20px 0; padding: 15px; background-color: #e8f5e9; border-radius: 8px; border: 2px solid #4caf50;">
+            <h3>👤 Victim Localization Tools</h3>
+            <p>Mark potential victim locations and add photos for identification:</p>
+            <button class="victim-type" data-type="confirmed" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #f44336; color: white; border: none; border-radius: 20px; cursor: pointer;">🚨 Confirmed</button>
+            <button class="victim-type" data-type="suspected" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #ff9800; color: white; border: none; border-radius: 20px; cursor: pointer;">❓ Suspected</button>
+            <button class="victim-type" data-type="responsive" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #ffd700; color: black; border: none; border-radius: 20px; cursor: pointer;">🗣️ Responsive</button>
+            <button class="victim-type" data-type="rescued" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #4caf50; color: white; border: none; border-radius: 20px; cursor: pointer;">✓ Rescued</button>
+            
+            <div style="margin-top: 15px;">
+                <button class="btn btn-safe" onclick="clearVictimMarkers()">Clear Victim Markers</button>
+                <button class="btn btn-safe" onclick="saveVictimLocations()">Save Victim Data</button>
+            </div>
+            
+            <!-- Victim photo upload -->
+            <div style="margin-top: 15px; padding: 10px; background-color: #fff; border-radius: 5px;">
+                <h4>📷 Victim Photo Upload</h4>
+                <input type="file" id="victimPhotoInput" accept="image/*" style="margin-bottom: 10px;" />
+                <div>
+                    <small>Upload a photo to attach to the next victim marker you place</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Secondary Hazards Tools -->
+        <div class="secondary-hazards-tools" style="margin: 20px 0; padding: 15px; background-color: #ffebee; border-radius: 8px; border: 2px solid #d32f2f;">
+            <h3>⚠️ Secondary Hazards Alerts</h3>
+            <p>Mark secondary hazards that could affect rescue operations:</p>
+            <button class="hazard-type" data-type="fire" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #ff5722; color: white; border: none; border-radius: 20px; cursor: pointer;">🔥 Fire</button>
+            <button class="hazard-type" data-type="gas_leak" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #9c27b0; color: white; border: none; border-radius: 20px; cursor: pointer;">☁️ Gas Leak</button>
+            <button class="hazard-type" data-type="flooding" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #2196f3; color: white; border: none; border-radius: 20px; cursor: pointer;">💧 Flooding</button>
+            <button class="hazard-type" data-type="unstable_floor" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #795548; color: white; border: none; border-radius: 20px; cursor: pointer;">🌊 Unstable Floor</button>
+            <button class="hazard-type" data-type="blocked_exit" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #e91e63; color: white; border: none; border-radius: 20px; cursor: pointer;">🚫 Blocked Exit</button>
+            <button class="hazard-type" data-type="electrical" style="display: inline-block; margin: 5px; padding: 8px 16px; background-color: #ffeb3b; color: black; border: none; border-radius: 20px; cursor: pointer;">⚡ Electrical</button>
+            
+            <div style="margin-top: 15px;">
+                <button class="btn" onclick="clearSecondaryHazards()">Clear Hazards</button>
+                <button class="btn" onclick="saveSecondaryHazards()">Save Hazards</button>
+            </div>
+        </div>
+
+        <!-- Risk Heatmap Controls -->
+        <div class="heatmap-controls">
+            <h3>🔥 Risk Heatmap Visualization</h3>
+            <p>Generate a heatmap overlay to visualize risk concentration areas:</p>
+            
+            <div class="heatmap-toggle">
+                <span>Heatmap Off</span>
+                <label class="switch">
+                    <input type="checkbox" id="heatmap-toggle">
+                    <span class="slider"></span>
+                </label>
+                <span>Heatmap On</span>
+            </div>
+            
+            <div class="risk-gradient"></div>
+            
+            <div class="heatmap-legend">
+                <div class="heatmap-legend-item" style="background-color: rgba(76, 175, 80, 0.2); color: #333;">Safe Zone</div>
+                <div class="heatmap-legend-item" style="background-color: rgba(255, 235, 59, 0.4); color: #333;">Low Risk</div>
+                <div class="heatmap-legend-item" style="background-color: rgba(255, 152, 0, 0.6); color: white;">Moderate Risk</div>
+                <div class="heatmap-legend-item" style="background-color: rgba(244, 67, 54, 0.8); color: white;">High Risk</div>
+            </div>
+            
+            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
+                <button class="btn" onclick="generateHeatmap()">Generate Heatmap</button>
+                <button class="btn" onclick="toggleHeatmapOpacity()">Adjust Opacity</button>
+                <button class="btn" onclick="downloadHeatmap()">Download Heatmap</button>
+            </div>
+            
+            <div id="heatmap-stats" style="margin-top: 15px; padding: 10px; background-color: #f5f5f5; border-radius: 5px; font-size: 0.9em;">
+                <strong>Risk Coverage:</strong> 
+                <span id="high-risk-percentage">0%</span> high risk, 
+                <span id="moderate-risk-percentage">0%</span> moderate risk,
+                <span id="low-risk-percentage">0%</span> low risk,
+                <span id="safe-percentage">100%</span> safe
             </div>
         </div>
 
@@ -207,6 +495,12 @@
 
         <!-- Blueprint Canvas -->
         <div class="canvas-container">
+            <div class="collaborators-panel">
+                <h4>🚨 Active Rescuers</h4>
+                <div id="collaborators-list">
+                    <!-- Active collaborators will be displayed here -->
+                </div>
+            </div>
             <canvas id="blueprintCanvas" width="800" height="600"></canvas>
         </div>
 
@@ -252,17 +546,52 @@
         let canvas, ctx;
         let currentImage = null;
         let damageMarks = [];
+        let victimMarkers = [];
+        let secondaryHazards = [];
         let selectedDamageType = 'crack';
+        let selectedVictimType = 'suspected';
+        let selectedHazardType = 'fire';
+        let markerMode = 'damage'; // 'damage', 'victim', or 'hazard'
         let pathMode = null; // 'start', 'end', or null
         let startPoint = null;
         let endPoint = null;
         let safePath = null;
         let currentFilename = null;
+        let pendingVictimPhoto = null;
+        
+        // Heatmap variables
+        let heatmapImage = null;
+        let showHeatmap = false;
+        let heatmapOpacity = 0.7;
+        let heatmapStats = {
+            high_risk_percentage: 0,
+            moderate_risk_percentage: 0,
+            low_risk_percentage: 0,
+            safe_percentage: 100
+        };
 
-        // Initialize canvas
+        // Socket.io and speech recognition variables
+        let socket;
+        let collaborators = {};
+        let userId;
+        let username;
+        let userColor;
+        let speechRecognition;
+        let isListening = false;
+        
+        // Initialize canvas, Socket.IO, and speech recognition
         window.onload = function() {
             canvas = document.getElementById('blueprintCanvas');
             ctx = canvas.getContext('2d');
+            
+            // Initialize Socket.IO
+            initializeSocketIO();
+            
+            // Initialize speech recognition
+            initSpeechRecognition();
+            
+            // Set up voice command button
+            setupVoiceCommandButton();
             
             // Verify canvas is working
             console.log('Canvas initialized:', canvas.width, 'x', canvas.height);
@@ -285,9 +614,43 @@
                     document.querySelectorAll('.damage-type').forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
                     selectedDamageType = this.dataset.type;
+                    markerMode = 'damage';
                     pathMode = null; // Reset path mode
                     updateStatus(`Selected damage type: ${selectedDamageType.replace('_', ' ')}`);
                 });
+            });
+            
+            // Set up victim type selection
+            document.querySelectorAll('.victim-type').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.victim-type').forEach(b => b.style.transform = 'scale(1)');
+                    this.style.transform = 'scale(1.1)';
+                    selectedVictimType = this.dataset.type;
+                    markerMode = 'victim';
+                    pathMode = null; // Reset path mode
+                    updateStatus(`Selected victim type: ${selectedVictimType.replace('_', ' ')}`);
+                });
+            });
+            
+            // Set up secondary hazards type selection
+            document.querySelectorAll('.hazard-type').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.querySelectorAll('.hazard-type').forEach(b => b.style.transform = 'scale(1)');
+                    this.style.transform = 'scale(1.1)';
+                    selectedHazardType = this.dataset.type;
+                    markerMode = 'hazard';
+                    pathMode = null; // Reset path mode
+                    updateStatus(`Selected hazard type: ${selectedHazardType.replace('_', ' ')}`);
+                });
+            });
+            
+            // Set up victim photo upload
+            document.getElementById('victimPhotoInput').addEventListener('change', function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    pendingVictimPhoto = file;
+                    updateStatus(`Photo ready to attach to next victim marker: ${file.name}`);
+                }
             });
             
             // Set up canvas click handler
@@ -319,18 +682,106 @@
                 updateStatus('Exit point set. Click "Calculate Safe Path".');
                 redrawCanvas();
             } else {
-                // Add damage mark
-                const damage = {
-                    x: x,
-                    y: y,
-                    type: selectedDamageType,
-                    timestamp: new Date().toISOString()
-                };
-                damageMarks.push(damage);
-                updateDamageList();
-                updateStatus(`${selectedDamageType.replace('_', ' ')} marked at (${Math.round(x)}, ${Math.round(y)})`);
+                // Add marker based on current mode
+                if (markerMode === 'damage') {
+                    // Add damage mark
+                    const damage = {
+                        x: x,
+                        y: y,
+                        type: selectedDamageType,
+                        timestamp: new Date().toISOString()
+                    };
+                    damageMarks.push(damage);
+                    updateDamageList();
+                    updateStatus(`${selectedDamageType.replace('_', ' ')} marked at (${Math.round(x)}, ${Math.round(y)})`);
+                    
+                    // Notify other users via socket
+                    if (socket) {
+                        socket.emit('damage_mark_added', {mark: damage});
+                    }
+                } 
+                else if (markerMode === 'victim') {
+                    // Add victim marker
+                    const victim = {
+                        x: x,
+                        y: y,
+                        type: selectedVictimType,
+                        timestamp: new Date().toISOString(),
+                        hasPhoto: pendingVictimPhoto !== null
+                    };
+                    
+                    victimMarkers.push(victim);
+                    
+                    // Handle photo upload if available
+                    if (pendingVictimPhoto) {
+                        uploadVictimPhoto(pendingVictimPhoto, victim);
+                        pendingVictimPhoto = null;
+                        document.getElementById('victimPhotoInput').value = '';
+                    }
+                    
+                    updateVictimList();
+                    updateStatus(`Victim (${selectedVictimType}) marked at (${Math.round(x)}, ${Math.round(y)})`);
+                    
+                    // Notify other users via socket
+                    if (socket) {
+                        socket.emit('victim_marker_added', {marker: victim});
+                    }
+                }
+                else if (markerMode === 'hazard') {
+                    // Add secondary hazard
+                    const hazard = {
+                        x: x,
+                        y: y,
+                        type: selectedHazardType,
+                        timestamp: new Date().toISOString()
+                    };
+                    secondaryHazards.push(hazard);
+                    updateHazardList();
+                    updateStatus(`Secondary hazard (${selectedHazardType.replace('_', ' ')}) marked at (${Math.round(x)}, ${Math.round(y)})`);
+                    
+                    // Notify other users via socket
+                    if (socket) {
+                        socket.emit('hazard_added', {hazard: hazard});
+                    }
+                }
+                
                 redrawCanvas();
             }
+        }
+
+        function uploadVictimPhoto(photoFile, victimMarker) {
+            if (!photoFile || !victimMarker || !currentFilename) {
+                updateStatus('Cannot upload photo - missing photo, victim marker, or no blueprint loaded');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('photo', photoFile);
+            formData.append('filename', currentFilename);
+            formData.append('victim_data', JSON.stringify({
+                x: victimMarker.x,
+                y: victimMarker.y,
+                type: victimMarker.type,
+                timestamp: victimMarker.timestamp
+            }));
+            
+            fetch('/upload_victim_photo', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    victimMarker.photoId = data.photo_id;
+                    updateStatus(`Victim photo uploaded successfully`);
+                } else {
+                    updateStatus(`Error uploading victim photo: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error uploading victim photo:', error);
+                updateStatus('Error uploading victim photo');
+            });
         }
 
         function uploadFile() {
@@ -588,6 +1039,14 @@
                 // Redraw the image
                 const {img, offsetX, offsetY, scaledWidth, scaledHeight} = currentImage;
                 ctx.drawImage(img, offsetX || 0, offsetY || 0, scaledWidth, scaledHeight);
+                
+                // Draw heatmap overlay if enabled
+                if (showHeatmap && heatmapImage) {
+                    ctx.save();
+                    ctx.globalAlpha = heatmapOpacity;
+                    ctx.drawImage(heatmapImage, offsetX || 0, offsetY || 0, scaledWidth, scaledHeight);
+                    ctx.restore();
+                }
             } else if (currentFilename) {
                 // If we have a filename but no image, show a placeholder
                 ctx.fillStyle = '#f0f0f0';
@@ -605,6 +1064,16 @@
                 drawDamageMarker(damage);
             });
             
+            // Draw victim markers
+            victimMarkers.forEach(victim => {
+                drawVictimMarker(victim);
+            });
+            
+            // Draw secondary hazards
+            secondaryHazards.forEach(hazard => {
+                drawSecondaryHazard(hazard);
+            });
+            
             // Draw path points
             if (startPoint) {
                 drawPathPoint(startPoint, '#4caf50', 'START');
@@ -616,6 +1085,25 @@
             // Draw safe path
             if (safePath && safePath.length > 0) {
                 drawSafePath(safePath);
+            }
+        }
+        
+        function updateHeatmapOpacity(value) {
+            heatmapOpacity = parseFloat(value);
+            // Update display
+            document.getElementById('heatmapOpacityValue').textContent = Math.round(heatmapOpacity * 100) + '%';
+            redrawCanvas();
+        }
+        
+        function updateHeatmapIntensity(value) {
+            // Store the intensity value for regeneration
+            heatmapIntensity = parseFloat(value);
+            // Update display
+            document.getElementById('heatmapIntensityValue').textContent = Math.round(heatmapIntensity * 100) + '%';
+            
+            // If we already have a heatmap, regenerate it with the new intensity
+            if (heatmapImage && currentFilename) {
+                generateHeatmap();
             }
         }
 
@@ -658,6 +1146,96 @@
             ctx.fillText(icons[damage.type] || '⚠', damage.x, damage.y + 4);
             
             // Add "AI" indicator for auto-detected
+        }
+        
+        function drawVictimMarker(victim) {
+            const colors = {
+                'confirmed': '#f44336',  // Red
+                'suspected': '#ff9800',  // Orange
+                'responsive': '#ffd700', // Gold
+                'rescued': '#4caf50'     // Green
+            };
+            
+            const color = colors[victim.type] || '#f44336';
+            
+            // Draw main circle
+            ctx.beginPath();
+            ctx.arc(victim.x, victim.y, 18, 0, 2 * Math.PI);
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            // White border
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Add victim type icon
+            ctx.fillStyle = '#fff';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            
+            const icons = {
+                'confirmed': '👤',
+                'suspected': '❓',
+                'responsive': '🗣️',
+                'rescued': '✓'
+            };
+            
+            ctx.fillText(icons[victim.type] || '👤', victim.x, victim.y + 5);
+            
+            // Add photo indicator if present
+            if (victim.hasPhoto || victim.photoId) {
+                ctx.font = '12px Arial';
+                ctx.fillText('📷', victim.x, victim.y - 20);
+            }
+        }
+        
+        function drawSecondaryHazard(hazard) {
+            const colors = {
+                'fire': '#ff5722',       // Red-orange
+                'gas_leak': '#9c27b0',   // Purple
+                'flooding': '#2196f3',   // Blue
+                'unstable_floor': '#795548', // Brown
+                'blocked_exit': '#e91e63', // Pink
+                'electrical': '#ffeb3b'  // Yellow
+            };
+            
+            const color = colors[hazard.type] || '#ff5722';
+            
+            // Draw triangle for hazards
+            const size = 20;
+            ctx.beginPath();
+            ctx.moveTo(hazard.x, hazard.y - size);
+            ctx.lineTo(hazard.x + size, hazard.y + size/2);
+            ctx.lineTo(hazard.x - size, hazard.y + size/2);
+            ctx.closePath();
+            
+            ctx.fillStyle = color;
+            ctx.fill();
+            
+            // Black border
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Add warning symbol
+            ctx.fillStyle = '#fff';
+            ctx.font = '16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('!', hazard.x, hazard.y + 5);
+            
+            // Add hazard type icon below
+            ctx.font = '14px Arial';
+            const icons = {
+                'fire': '🔥',
+                'gas_leak': '☁️',
+                'flooding': '💧',
+                'unstable_floor': '🌊',
+                'blocked_exit': '🚫',
+                'electrical': '⚡'
+            };
+            
+            ctx.fillText(icons[hazard.type] || '⚠', hazard.x, hazard.y + 30);
             if (isAutoDetected) {
                 ctx.fillStyle = '#ffff00';
                 ctx.font = 'bold 8px Arial';
@@ -830,9 +1408,113 @@
         }
 
         function generateRiskZones() {
-            // Visual feedback for risk zone generation
-            updateStatus('Risk zones generated based on damage assessment.');
-            updateRiskLevel();
+            // Generate a heatmap based on damage, victims, and hazards
+            generateHeatmap();
+        }
+        
+        function generateHeatmap() {
+            if (!currentFilename) {
+                updateStatus("No blueprint loaded. Please load a blueprint first.");
+                return;
+            }
+            
+            updateStatus("Generating risk heatmap...");
+            
+            // Prepare data to send to the server
+            const data = {
+                filename: currentFilename,
+                damage_marks: damageMarks,
+                victim_markers: victimMarkers,
+                secondary_hazards: secondaryHazards,
+                intensity: heatmapIntensity || 1.0 // Default intensity if not set
+            };
+            
+            // Send to server for heatmap generation
+            fetch('/generate_heatmap', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Create image from base64 data
+                    heatmapImage = new Image();
+                    heatmapImage.onload = function() {
+                        showHeatmap = true;
+                        redrawCanvas();
+                        
+                        // Update risk stats
+                        heatmapStats = data.stats || {
+                            high_risk_percentage: 0,
+                            moderate_risk_percentage: 0,
+                            low_risk_percentage: 0,
+                            safe_percentage: 100
+                        };
+                        
+                        updateRiskStatsDisplay();
+                        updateStatus("Risk heatmap generated successfully");
+                    };
+                    heatmapImage.src = 'data:image/png;base64,' + data.heatmap_image;
+                } else {
+                    updateStatus("Error generating risk heatmap: " + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                updateStatus("Server error while generating heatmap");
+            });
+        }
+        
+        function updateRiskStatsDisplay() {
+            // Update the risk statistics display in the UI
+            document.getElementById('highRiskPercentage').textContent = 
+                heatmapStats.high_risk_percentage.toFixed(1) + '%';
+            document.getElementById('moderateRiskPercentage').textContent = 
+                heatmapStats.moderate_risk_percentage.toFixed(1) + '%';
+            document.getElementById('lowRiskPercentage').textContent = 
+                heatmapStats.low_risk_percentage.toFixed(1) + '%';
+            document.getElementById('safePercentage').textContent = 
+                heatmapStats.safe_percentage.toFixed(1) + '%';
+        }
+        
+        function toggleHeatmap() {
+            showHeatmap = !showHeatmap;
+            
+            // Update button text
+            const toggleBtn = document.getElementById('toggleHeatmapBtn');
+            if (toggleBtn) {
+                toggleBtn.textContent = showHeatmap ? 'Hide Heatmap' : 'Show Heatmap';
+            }
+            
+            redrawCanvas();
+            updateStatus(showHeatmap ? "Showing risk heatmap" : "Hiding risk heatmap");
+        }
+        
+        function clearRiskZones() {
+            // Reset the heatmap
+            heatmapImage = null;
+            showHeatmap = false;
+            
+            // Reset the toggle button
+            const toggleBtn = document.getElementById('toggleHeatmapBtn');
+            if (toggleBtn) {
+                toggleBtn.textContent = 'Show Heatmap';
+            }
+            
+            // Reset the stats
+            heatmapStats = {
+                high_risk_percentage: 0,
+                moderate_risk_percentage: 0,
+                low_risk_percentage: 0,
+                safe_percentage: 100
+            };
+            
+            updateRiskStatsDisplay();
+            redrawCanvas();
+            updateStatus("Risk heatmap cleared");
         }
 
         function saveDamageAssessment() {
@@ -883,18 +1565,135 @@
 
         function updateDamageList() {
             const container = document.getElementById('damageItems');
-            if (damageMarks.length === 0) {
-                container.innerHTML = 'No damage recorded yet';
-            } else {
-                container.innerHTML = damageMarks.map((damage, index) => 
+            let html = '';
+            let hasMarkers = false;
+            
+            // Add damage marks
+            if (damageMarks.length > 0) {
+                hasMarkers = true;
+                html += '<h4>Damage Markers:</h4>';
+                html += damageMarks.map((damage, index) => 
                     `<div class="damage-item">
                         ${index + 1}. ${damage.type.replace('_', ' ')} at (${Math.round(damage.x)}, ${Math.round(damage.y)})
                     </div>`
                 ).join('');
             }
             
-            document.getElementById('damageCount').textContent = `Damage Points: ${damageMarks.length}`;
+            // Add victim markers
+            if (victimMarkers.length > 0) {
+                hasMarkers = true;
+                html += '<h4>Victim Markers:</h4>';
+                html += victimMarkers.map((victim, index) => {
+                    const hasPhoto = victim.hasPhoto ? '📷' : '';
+                    return `<div class="damage-item" style="background-color: #e8f5e9; border-left: 3px solid #4caf50;">
+                        ${index + 1}. Victim (${victim.type}) at (${Math.round(victim.x)}, ${Math.round(victim.y)}) ${hasPhoto}
+                    </div>`;
+                }).join('');
+            }
+            
+            // Add secondary hazards
+            if (secondaryHazards.length > 0) {
+                hasMarkers = true;
+                html += '<h4>Secondary Hazards:</h4>';
+                html += secondaryHazards.map((hazard, index) => 
+                    `<div class="damage-item" style="background-color: #ffebee; border-left: 3px solid #f44336;">
+                        ${index + 1}. ${hazard.type.replace('_', ' ')} at (${Math.round(hazard.x)}, ${Math.round(hazard.y)})
+                    </div>`
+                ).join('');
+            }
+            
+            // Display message if no markers
+            if (!hasMarkers) {
+                html = 'No markers recorded yet';
+            }
+            
+            container.innerHTML = html;
+            
+            // Update counters
+            document.getElementById('damageCount').textContent = `Damage Points: ${damageMarks.length}, Victims: ${victimMarkers.length}, Hazards: ${secondaryHazards.length}`;
             updateRiskLevel();
+        }
+        
+        function updateVictimList() {
+            updateDamageList(); // Use combined update function
+        }
+        
+        function updateHazardList() {
+            updateDamageList(); // Use combined update function
+        }
+        
+        function saveVictimLocations() {
+            if (!currentFilename || victimMarkers.length === 0) {
+                updateStatus('No blueprint loaded or no victims marked');
+                return;
+            }
+            
+            fetch('/save_victims', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filename: currentFilename,
+                    victim_markers: victimMarkers
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    updateStatus('Victim locations saved successfully');
+                } else {
+                    updateStatus(`Error saving victim locations: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving victim locations:', error);
+                updateStatus('Error saving victim locations');
+            });
+        }
+        
+        function saveSecondaryHazards() {
+            if (!currentFilename || secondaryHazards.length === 0) {
+                updateStatus('No blueprint loaded or no hazards marked');
+                return;
+            }
+            
+            fetch('/save_hazards', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    filename: currentFilename,
+                    hazards: secondaryHazards
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    updateStatus('Secondary hazards saved successfully');
+                } else {
+                    updateStatus(`Error saving secondary hazards: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving secondary hazards:', error);
+                updateStatus('Error saving secondary hazards');
+            });
+        }
+        
+        function clearVictimMarkers() {
+            victimMarkers = [];
+            updateDamageList();
+            redrawCanvas();
+            updateStatus('Victim markers cleared');
+        }
+        
+        function clearSecondaryHazards() {
+            secondaryHazards = [];
+            updateDamageList();
+            redrawCanvas();
+            updateStatus('Secondary hazards cleared');
         }
 
         function updateRiskLevel() {
@@ -978,7 +1777,456 @@
             updateDamageList();
             updateStatus(`Auto-detected ${type.replace('_', ' ')} added to assessment`);
             redrawCanvas();
+            
+            // Broadcast damage mark to collaborators
+            if (socket && socket.connected) {
+                socket.emit('damage_mark_added', { mark: damage });
+            }
         }
+        
+        // Initialize Socket.IO connection
+        function initializeSocketIO() {
+            try {
+                socket = io();
+                
+                // Connection event
+                socket.on('connect', () => {
+                    console.log('Connected to server');
+                    updateStatus('Connected to collaboration server');
+                });
+                
+                // Disconnect event
+                socket.on('disconnect', () => {
+                    console.log('Disconnected from server');
+                    updateStatus('Disconnected from collaboration server');
+                });
+                
+                // User connected event
+                socket.on('user_connected', (data) => {
+                    console.log('User connected:', data);
+                    userId = data.user.id;
+                    username = data.user.username;
+                    userColor = data.user.color;
+                    
+                    // Join blueprint room if a file is loaded
+                    if (currentFilename) {
+                        joinBlueprintRoom(currentFilename);
+                    }
+                });
+                
+                // Room update event (users in same blueprint)
+                socket.on('room_update', (data) => {
+                    console.log('Room update:', data);
+                    updateCollaboratorsList(data.users);
+                    
+                    // If we received damage marks from server, update our local copy
+                    if (data.damage_marks && data.damage_marks.length > 0) {
+                        // Only add marks we don't already have
+                        data.damage_marks.forEach(mark => {
+                            const exists = damageMarks.some(m => 
+                                m.x === mark.x && m.y === mark.y && m.type === mark.type
+                            );
+                            
+                            if (!exists) {
+                                damageMarks.push(mark);
+                                updateStatus(`Received damage mark from ${mark.added_by || 'collaborator'}`);
+                            }
+                        });
+                        
+                        updateDamageList();
+                        redrawCanvas();
+                    }
+                });
+                
+                // Heatmap update from other users
+                socket.on('heatmap_generated', (data) => {
+                    if (data.filename === currentFilename) {
+                        updateStatus(`Heatmap generated by ${data.username || 'a collaborator'}`);
+                        
+                        // Create image from base64 data
+                        heatmapImage = new Image();
+                        heatmapImage.onload = function() {
+                            // Only show automatically if we don't already have a heatmap visible
+                            if (!showHeatmap) {
+                                showHeatmap = true;
+                                
+                                // Update button text
+                                const toggleBtn = document.getElementById('toggleHeatmapBtn');
+                                if (toggleBtn) {
+                                    toggleBtn.textContent = 'Hide Heatmap';
+                                }
+                            }
+                            
+                            // Update risk stats
+                            heatmapStats = data.stats || heatmapStats;
+                            updateRiskStatsDisplay();
+                            
+                            redrawCanvas();
+                        };
+                        heatmapImage.src = 'data:image/png;base64,' + data.heatmap_image;
+                    }
+                });
+                
+                // Heatmap visibility toggle from other users
+                socket.on('heatmap_visibility', (data) => {
+                    if (data.filename === currentFilename) {
+                        showHeatmap = data.visible;
+                        
+                        // Update button text
+                        const toggleBtn = document.getElementById('toggleHeatmapBtn');
+                        if (toggleBtn) {
+                            toggleBtn.textContent = showHeatmap ? 'Hide Heatmap' : 'Show Heatmap';
+                        }
+                        
+                        redrawCanvas();
+                        updateStatus(`Heatmap ${showHeatmap ? 'shown' : 'hidden'} by ${data.username || 'a collaborator'}`);
+                    }
+                });
+                
+                // Cursor update from other users
+                socket.on('cursor_update', (data) => {
+                    // Update remote cursor position
+                    updateRemoteCursor(data);
+                });
+                
+                // Damage mark update from other users
+                socket.on('damage_mark_update', (data) => {
+                    if (data.action === 'add') {
+                        const mark = data.mark;
+                        
+                        // Avoid duplicates
+                        const exists = damageMarks.some(m => 
+                            m.x === mark.x && m.y === mark.y && m.type === mark.type
+                        );
+                        
+                        if (!exists) {
+                            damageMarks.push(mark);
+                            updateDamageList();
+                            updateStatus(`${mark.added_by || 'Someone'} marked ${mark.type.replace('_', ' ')}`);
+                            redrawCanvas();
+                        }
+                    }
+                });
+                
+                // Voice command response
+                socket.on('voice_command_response', (data) => {
+                    console.log('Voice command response:', data);
+                    updateStatus(data.message);
+                    
+                    if (data.action === 'add_damage_mark' && data.mark) {
+                        // Add the mark if not exists
+                        const mark = data.mark;
+                        const exists = damageMarks.some(m => 
+                            m.x === mark.x && m.y === mark.y && m.type === mark.type
+                        );
+                        
+                        if (!exists) {
+                            damageMarks.push(mark);
+                            updateDamageList();
+                            redrawCanvas();
+                        }
+                    }
+                });
+                
+                // Command center alert
+                socket.on('command_center_alert', (data) => {
+                    alert(`COMMAND CENTER ALERT: ${data.message}`);
+                });
+                
+                // Set up canvas mouse movement for cursor sharing
+                canvas.addEventListener('mousemove', (event) => {
+                    if (socket && socket.connected) {
+                        const rect = canvas.getBoundingClientRect();
+                        const x = event.clientX - rect.left;
+                        const y = event.clientY - rect.top;
+                        
+                        // Throttle cursor updates to avoid flooding
+                        if (!window.lastCursorUpdate || Date.now() - window.lastCursorUpdate > 50) {
+                            socket.emit('cursor_move', {x, y});
+                            window.lastCursorUpdate = Date.now();
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Socket.IO initialization error:', error);
+                updateStatus('Collaboration features unavailable');
+            }
+        }
+        
+        // Join a blueprint room for collaboration
+        function joinBlueprintRoom(filename) {
+            if (socket && socket.connected && filename) {
+                // Clean up any remote cursors
+                document.querySelectorAll('.remote-cursor').forEach(el => el.remove());
+                collaborators = {};
+                
+                // Join the room
+                socket.emit('join_blueprint', {
+                    blueprint: filename,
+                    username: username || `Rescuer-${Math.floor(Math.random() * 1000)}`
+                });
+                
+                updateStatus(`Joined collaboration room for ${filename}`);
+            }
+        }
+        
+        // Update collaborators list in the UI
+        function updateCollaboratorsList(users) {
+            const collaboratorsDiv = document.getElementById('collaborators-list');
+            collaboratorsDiv.innerHTML = '';
+            
+            if (!users || Object.keys(users).length === 0) {
+                collaboratorsDiv.innerHTML = '<p>No other rescuers active</p>';
+                return;
+            }
+            
+            for (const user of Object.values(users)) {
+                // Don't show current user
+                if (user.id === userId) continue;
+                
+                const div = document.createElement('div');
+                div.className = 'collaborator';
+                
+                const colorDot = document.createElement('span');
+                colorDot.className = 'collaborator-color';
+                colorDot.style.backgroundColor = user.color;
+                
+                div.appendChild(colorDot);
+                div.appendChild(document.createTextNode(user.username));
+                
+                collaboratorsDiv.appendChild(div);
+                
+                // Store collaborator data
+                collaborators[user.id] = user;
+            }
+        }
+        
+        // Update remote cursor position
+        function updateRemoteCursor(data) {
+            const user = data.user;
+            
+            // Ensure we have the collaborator in our list
+            if (!collaborators[user.id]) {
+                collaborators[user.id] = user;
+            }
+            
+            // Get or create cursor element
+            let cursorElement = document.getElementById(`cursor-${user.id}`);
+            
+            if (!cursorElement) {
+                cursorElement = document.createElement('div');
+                cursorElement.id = `cursor-${user.id}`;
+                cursorElement.className = 'remote-cursor';
+                
+                // Create cursor icon
+                const cursorIcon = document.createElement('div');
+                cursorIcon.style.width = '0';
+                cursorIcon.style.height = '0';
+                cursorIcon.style.borderLeft = '8px solid transparent';
+                cursorIcon.style.borderRight = '8px solid transparent';
+                cursorIcon.style.borderBottom = `12px solid ${user.color}`;
+                cursorIcon.style.transform = 'rotate(-45deg)';
+                
+                // Create cursor label
+                const cursorLabel = document.createElement('div');
+                cursorLabel.className = 'cursor-label';
+                cursorLabel.innerText = user.username;
+                
+                cursorElement.appendChild(cursorIcon);
+                cursorElement.appendChild(cursorLabel);
+                
+                document.querySelector('.canvas-container').appendChild(cursorElement);
+            }
+            
+            // Position cursor
+            cursorElement.style.left = `${data.x}px`;
+            cursorElement.style.top = `${data.y}px`;
+        }
+        
+        // Initialize speech recognition
+        function initSpeechRecognition() {
+            try {
+                // Check if browser supports speech recognition
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                
+                if (!SpeechRecognition) {
+                    console.log('Speech recognition not supported');
+                    updateStatus('Voice commands not supported in this browser');
+                    return;
+                }
+                
+                // Create speech recognition instance
+                speechRecognition = new SpeechRecognition();
+                speechRecognition.continuous = false;
+                speechRecognition.lang = 'en-US';
+                speechRecognition.interimResults = false;
+                speechRecognition.maxAlternatives = 1;
+                
+                // Speech recognition results handler
+                speechRecognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript.trim();
+                    console.log('Voice command:', transcript);
+                    updateStatus(`Voice command: "${transcript}"`);
+                    
+                    // Process voice command
+                    processVoiceCommand(transcript);
+                };
+                
+                // Error handler
+                speechRecognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    updateStatus(`Voice command error: ${event.error}`);
+                    stopListening();
+                };
+                
+                // End event
+                speechRecognition.onend = () => {
+                    stopListening();
+                };
+                
+                console.log('Speech recognition initialized');
+                
+            } catch (error) {
+                console.error('Speech recognition initialization error:', error);
+                updateStatus('Voice commands not available');
+            }
+        }
+        
+        // Set up voice command button
+        function setupVoiceCommandButton() {
+            const voiceBtn = document.getElementById('voiceCommandBtn');
+            
+            if (!voiceBtn) return;
+            
+            voiceBtn.addEventListener('click', () => {
+                if (!isListening) {
+                    startListening();
+                } else {
+                    stopListening();
+                }
+            });
+        }
+        
+        // Start listening for voice commands
+        function startListening() {
+            if (!speechRecognition) return;
+            
+            try {
+                speechRecognition.start();
+                isListening = true;
+                
+                const voiceBtn = document.getElementById('voiceCommandBtn');
+                if (voiceBtn) {
+                    voiceBtn.classList.add('listening');
+                    voiceBtn.innerHTML = '🔴';
+                }
+                
+                updateStatus('Listening for voice command...');
+                
+            } catch (error) {
+                console.error('Error starting speech recognition:', error);
+                updateStatus('Failed to start voice recognition');
+            }
+        }
+        
+        // Stop listening for voice commands
+        function stopListening() {
+            if (!speechRecognition) return;
+            
+            try {
+                speechRecognition.stop();
+            } catch (error) {
+                console.error('Error stopping speech recognition:', error);
+            }
+            
+            isListening = false;
+            
+            const voiceBtn = document.getElementById('voiceCommandBtn');
+            if (voiceBtn) {
+                voiceBtn.classList.remove('listening');
+                voiceBtn.innerHTML = '🎙️';
+            }
+        }
+        
+        // Process voice command
+        function processVoiceCommand(command) {
+            // Get canvas cursor position
+            const canvasRect = canvas.getBoundingClientRect();
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            
+            // Use current mouse position if available
+            let x = centerX;
+            let y = centerY;
+            
+            if (window.lastMousePosition) {
+                x = window.lastMousePosition.x;
+                y = window.lastMousePosition.y;
+            }
+            
+            // Local command processing
+            
+            // Check for damage type keywords
+            const damageKeywords = {
+                'wall collapse': 'collapsed_wall',
+                'collapsed wall': 'collapsed_wall',
+                'crack': 'crack',
+                'beam damage': 'leaning_beam',
+                'leaning beam': 'leaning_beam',
+                'blocked passage': 'blocked_passage',
+                'blocked path': 'blocked_passage'
+            };
+            
+            let handled = false;
+            
+            // Check for damage marking commands
+            for (const [keyword, damageType] of Object.entries(damageKeywords)) {
+                if (command.toLowerCase().includes(keyword) || 
+                    command.toLowerCase().includes(`mark ${keyword}`)) {
+                    
+                    addDamage(x, y, damageType);
+                    updateStatus(`Marked ${damageType.replace('_', ' ')} via voice command`);
+                    handled = true;
+                    break;
+                }
+            }
+            
+            // Path commands
+            if (command.toLowerCase().includes('find path') || 
+                command.toLowerCase().includes('safe path')) {
+                findSafePath();
+                handled = true;
+            }
+            
+            // Send to server for additional processing
+            if (socket && socket.connected) {
+                socket.emit('voice_command', {
+                    command: command,
+                    position: { x, y }
+                });
+            }
+        }
+        
+        // Track mouse position for voice commands
+        canvas.addEventListener('mousemove', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            
+            window.lastMousePosition = { x, y };
+        });
     </script>
+    
+    <!-- Voice Command Button -->
+    <div class="voice-commands">
+        <button id="voiceCommandBtn" class="voice-btn">🎙️</button>
+        <div class="voice-tooltip">Voice Commands (Click to speak)</div>
+    </div>
+    
+    <!-- Command Center Link -->
+    <div style="position: fixed; bottom: 20px; left: 20px;">
+        <a href="/dashboard" class="btn" style="background-color: #1976d2;">🌐 Command Center Dashboard</a>
+    </div>
 </body>
 </html>
